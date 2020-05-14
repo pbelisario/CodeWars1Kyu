@@ -6,15 +6,26 @@ def solvePuzzle(clues):
 
     # Group by seen
     seenMap = dividedIntoGroups(permutations)
-    
+
     # init Grid
     grid = [[0 for i in range(list_len)] for j in range(list_len)]
 
     # init Mask
     mask = fillGrid(grid, clues, list_len)
 
-    for i in mask:
-        print(i)
+    rowCandidatesList = [[candidates for candidates in getCandidatesForRow(row, clues, permutations, seenMap, list_len)] for row in range(list_len)]
+    colCandidatesList = [[candidates for candidates in getCandidatesForCol(col, clues, permutations, seenMap, list_len)] for col in range(list_len)] 
+    
+    filterCandidatesListByMask(rowCandidatesList, colCandidatesList, grid, mask, list_len)
+    '''
+    while(True):
+        updated = filterCandidatesListByMask(rowCandidatesList, colCandidatesList, grid, mask)
+        if (not updated): break
+
+        updateMask(mask, rowCandidatesList, colCandidatesList)
+        pruneGridAndMask(grid, mask, list_len)
+'''
+
     pass
 
 # create an array with all permutations
@@ -28,6 +39,57 @@ def generatePermutations(elements):
         for perm in generatePermutations(elements[1:]):
             for i in range(len(elements)):
                 yield perm[:i] + elements[0:1] + perm[i:]
+
+def filterCandidatesListByMask(rowCandidatesList, colCandidatesList, grid, mask, list_len):
+    updated = False
+    rowPossibleCombinations = {}
+    for row in range(list_len):
+        if not rowPossibleCombinations.get(row):
+            rowPossibleCombinations[row] = []
+        for candidateList in rowCandidatesList[row]:
+            count = 0
+            for col in range(len(candidateList)):
+                if not (mask[row][col] & (1 << candidateList[col]-1)):
+                    count += 1
+            if count > 6:                
+                rowPossibleCombinations[row] += [candidateList]
+        if len(rowPossibleCombinations) < len(rowCandidatesList[row]): updated = True
+        if len(rowPossibleCombinations) == 1:
+            heights = rowPossibleCombinations[0]
+            for col in range(list_len):
+                grid[row][col] = heights[col]
+                maskTheSameLine(mask, row, col, heights[col])
+        rowCandidatesList[row] = rowPossibleCombinations
+    
+
+
+
+def getCandidatesForRow(row, clues, permutations, seenMap, list_len):
+    left = getLeftClue(clues, row, len(clues))
+    right = getRightClue(clues, row, list_len)
+
+    if left and right:
+        candidates = seenMap.get('total')[left][right]
+    elif left:
+        candidates = seenMap.get('left')[left]
+    elif right:
+        candidates = seenMap.get('right')[right]
+    else:
+        candidates = permutations
+    return candidates
+
+def getCandidatesForCol(col, clues, permutations, seenMap, list_len):
+    top = getTopClue(clues, col)
+    bottom = getBotClue(clues, col, list_len)
+    if top and bottom:
+        candidates = seenMap.get('total')[top][bottom]
+    elif top:
+        candidates = seenMap.get('left')[top]
+    elif bottom:
+        candidates = seenMap.get('right')[bottom]
+    else:
+        candidates = permutations
+    return candidates
 
 def dividedIntoGroups(permutations):
     # {Number of Skyscraper possible to see : configurations possible for each number}
