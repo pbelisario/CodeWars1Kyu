@@ -15,16 +15,38 @@ def solvePuzzle(clues):
 
     rowCandidatesList = [[candidates for candidates in getCandidatesForRow(row, clues, permutations, seenMap, list_len)] for row in range(list_len)]
     colCandidatesList = [[candidates for candidates in getCandidatesForCol(col, clues, permutations, seenMap, list_len)] for col in range(list_len)] 
-    
-    filterCandidatesListByMask(rowCandidatesList, colCandidatesList, grid, mask, list_len)
-    '''
+
     while(True):
         updated = filterCandidatesListByMask(rowCandidatesList, colCandidatesList, grid, mask)
-        if (not updated): break
-
+        if not updated: break
         updateMask(mask, rowCandidatesList, colCandidatesList)
         pruneGridAndMask(grid, mask, list_len)
-'''
+        
+    state = {
+        'mask': mask,
+        'tops': [0 for i in range(list_len)],
+        'maxs': [0 for i in range(list_len)]
+    }
+
+    stateList = [cloneState(state)]
+    indexes = [-1 for i in range(list_len)]
+    print(indexes)
+    row = 0
+    while(True):
+        if findIndexForRow(row, indexes, clues, permutations, rowCandidatesList, state):
+            row += 1
+            stateList[row] = cloneState(state)
+            # Solved
+            if row >= list_len: break
+        else:
+            indexes[row] = -1
+            row -= 1
+            state = cloneState(stateList[row])
+            # invalid
+            if row < 0:
+                return 'can not solve'
+
+    print(indexes)          
 
     pass
 
@@ -40,28 +62,78 @@ def generatePermutations(elements):
             for i in range(len(elements)):
                 yield perm[:i] + elements[0:1] + perm[i:]
 
-def filterCandidatesListByMask(rowCandidatesList, colCandidatesList, grid, mask, list_len):
+def filterCandidatesListByMask(rowCandidatesList, colCandidatesList, grid, mask):
     updated = False
     rowPossibleCombinations = {}
-    for row in range(list_len):
-        if not rowPossibleCombinations.get(row):
-            rowPossibleCombinations[row] = []
-        for candidateList in rowCandidatesList[row]:
+    colPossibleCombinations = {}
+    for row, candidates in enumerate(rowCandidatesList):
+        for heights in candidates:
             count = 0
-            for col in range(len(candidateList)):
-                if not (mask[row][col] & (1 << candidateList[col]-1)):
+            for col, height in enumerate(heights):
+                if not(mask[row][col] & (1 << height - 1)):
                     count += 1
-            if count > 6:                
-                rowPossibleCombinations[row] += [candidateList]
-        if len(rowPossibleCombinations) < len(rowCandidatesList[row]): updated = True
-        if len(rowPossibleCombinations) == 1:
-            heights = rowPossibleCombinations[0]
-            for col in range(list_len):
-                grid[row][col] = heights[col]
-                maskTheSameLine(mask, row, col, heights[col])
-        rowCandidatesList[row] = rowPossibleCombinations
-    
 
+            if count == 7:
+                if not rowPossibleCombinations.get(row):
+                    rowPossibleCombinations[row] = []
+                rowPossibleCombinations[row] += [heights]
+        
+        if len(rowPossibleCombinations[row]) < len(candidates): updated = True
+        if len(rowPossibleCombinations[row]) == 1:
+            heights = rowPossibleCombinations[row][0]
+            for col, height in enumerate(heights):
+                grid[row][col] = height
+                maskTheSameLine(mask, row, col, height)
+        rowCandidatesList[row] = rowPossibleCombinations[row]
+    
+    for col, candidates in enumerate(colCandidatesList):
+        for heights in candidates:
+            count = 0
+            for row, height in enumerate(heights):
+                if not(mask[row][col] & (1 << height - 1)):
+                    count += 1
+
+            if count == 7:
+                if not colPossibleCombinations.get(col):
+                    colPossibleCombinations[col] = []
+                colPossibleCombinations[col] += [heights]
+        
+        if len(colPossibleCombinations[col]) < len(candidates): updated = True
+        if len(colPossibleCombinations[col]) == 1:
+            heights = colPossibleCombinations[col][0]
+            for row, height in enumerate(heights):
+                grid[row][col] = height
+                maskTheSameLine(mask, row, col, height)
+        colCandidatesList[col] = colPossibleCombinations[col]
+    return updated
+
+def updateMask(mask, rowCandidatesList, colCandidatesList):
+    n = len(mask)
+    maskAll = (2**n)-1
+    
+    rowBits = [[0 for i in range(n)] for i in range(n)]
+    colBits = [[0 for i in range(n)] for i in range(n)]
+    
+    for row, candidates in enumerate(rowCandidatesList):
+        for heights in candidates:
+            for col, height in enumerate(heights):
+                rowBits[row][col] |= 1 << height-1
+    
+    for col, candidates in enumerate(colCandidatesList):
+        for heights in candidates:
+            for row, height in enumerate(heights):
+                colBits[row][col] |= 1 << height-1
+    
+    for idx, row in enumerate(mask):
+        for col, _ in enumerate(row):
+            mask[idx][col] = maskAll & ~(rowBits[idx][col] & colBits[idx][col])
+
+def cloneState(state):
+        return {
+            'mask': state['mask'],
+            'tops': state['tops'],
+            'maxs': state['maxs']
+        }
 
 
 def getCandidatesForRow(row, clues, permutations, seenMap, list_len):
@@ -237,5 +309,9 @@ def howManyElementsICanSee(group):
             cur_element = element
             count += 1
     return count
+
+def findIndexForRow(row, indexes, clues, permutations, rowCandidatesList, state):
+    pass
+
 
 solvePuzzle([7,0,0,0,2,2,3, 0,0,3,0,0,0,0, 3,0,3,0,0,5,0, 0,0,0,0,5,0,4])
