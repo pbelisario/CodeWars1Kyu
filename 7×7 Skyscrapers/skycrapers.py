@@ -1,317 +1,142 @@
-def solvePuzzle(clues):
-    list_len = len(clues)//4
-    # generate all possible permutations
-    # of 1 to the width of the skyscraper grid
-    permutations = [elements for elements in generatePermutations(list(range(1, list_len+1)))]
+import itertools
 
-    # Group by seen
-    seenMap = dividedIntoGroups(permutations)
-
-    # init Grid
-    grid = [[0 for i in range(list_len)] for j in range(list_len)]
-
-    # init Mask
-    mask = fillGrid(grid, clues, list_len)
-
-    rowCandidatesList = [[candidates for candidates in getCandidatesForRow(row, clues, permutations, seenMap, list_len)] for row in range(list_len)]
-    colCandidatesList = [[candidates for candidates in getCandidatesForCol(col, clues, permutations, seenMap, list_len)] for col in range(list_len)] 
-
-    while(True):
-        updated = filterCandidatesListByMask(rowCandidatesList, colCandidatesList, grid, mask)
-        if not updated: break
-        updateMask(mask, rowCandidatesList, colCandidatesList)
-        pruneGridAndMask(grid, mask, list_len)
-        
-    state = {
-        'mask': mask,
-        'tops': [0 for i in range(list_len)],
-        'maxs': [0 for i in range(list_len)]
-    }
-
-    stateList = [cloneState(state)]
-    indexes = [-1 for i in range(list_len)]
-    print(indexes)
-    row = 0
-    while(True):
-        if findIndexForRow(row, indexes, clues, permutations, rowCandidatesList, state):
-            row += 1
-            stateList[row] = cloneState(state)
-            # Solved
-            if row >= list_len: break
-        else:
-            indexes[row] = -1
-            row -= 1
-            state = cloneState(stateList[row])
-            # invalid
-            if row < 0:
-                return 'can not solve'
-
-    print(indexes)          
-
-    pass
-
-# create an array with all permutations
-# of a sequence between n and 1
-def generatePermutations(elements):
-    # Final step
-    if len(elements) <= 1:
-        yield elements
-    # Recursive step
-    else:
-        for perm in generatePermutations(elements[1:]):
-            for i in range(len(elements)):
-                yield perm[:i] + elements[0:1] + perm[i:]
-
-def filterCandidatesListByMask(rowCandidatesList, colCandidatesList, grid, mask):
-    updated = False
-    rowPossibleCombinations = {}
-    colPossibleCombinations = {}
-    for row, candidates in enumerate(rowCandidatesList):
-        for heights in candidates:
-            count = 0
-            for col, height in enumerate(heights):
-                if not(mask[row][col] & (1 << height - 1)):
-                    count += 1
-
-            if count == 7:
-                if not rowPossibleCombinations.get(row):
-                    rowPossibleCombinations[row] = []
-                rowPossibleCombinations[row] += [heights]
-        
-        if len(rowPossibleCombinations[row]) < len(candidates): updated = True
-        if len(rowPossibleCombinations[row]) == 1:
-            heights = rowPossibleCombinations[row][0]
-            for col, height in enumerate(heights):
-                grid[row][col] = height
-                maskTheSameLine(mask, row, col, height)
-        rowCandidatesList[row] = rowPossibleCombinations[row]
+def solve_puzzle (clues):
+    list_len = len(clues) // 4
     
-    for col, candidates in enumerate(colCandidatesList):
-        for heights in candidates:
-            count = 0
-            for row, height in enumerate(heights):
-                if not(mask[row][col] & (1 << height - 1)):
-                    count += 1
+    # Create an empty board
+    puzzle = [[0 for x in range(list_len)] for y in range(list_len)]
 
-            if count == 7:
-                if not colPossibleCombinations.get(col):
-                    colPossibleCombinations[col] = []
-                colPossibleCombinations[col] += [heights]
-        
-        if len(colPossibleCombinations[col]) < len(candidates): updated = True
-        if len(colPossibleCombinations[col]) == 1:
-            heights = colPossibleCombinations[col][0]
-            for row, height in enumerate(heights):
-                grid[row][col] = height
-                maskTheSameLine(mask, row, col, height)
-        colCandidatesList[col] = colPossibleCombinations[col]
-    return updated
+    # create an array with all possible permutations
+    permutations = list(itertools.permutations(range(list_len), list_len))
 
-def updateMask(mask, rowCandidatesList, colCandidatesList):
-    n = len(mask)
-    maskAll = (2**n)-1
+    # Each array stores how many skyscraper it is possible to see
+    # lookin from the left (cl) or right(cr), at the same index
+    # in the permutations array
+    # Eg. cl[0] = 7 permutations[0] = (0, 1, 2, 3, 4, 5, 6)
+    #     cr[0] = 1 permutations[::-1][0] = (6, 5, 4, 3, 2, 1, 0)
+    # Left side
+    cl = list(map(lambda x: count_steps(x, list_len), permutations))
+    # Right side
+    cr = list(map(lambda x: count_steps(x[::-1], list_len), permutations))
     
-    rowBits = [[0 for i in range(n)] for i in range(n)]
-    colBits = [[0 for i in range(n)] for i in range(n)]
+    # Create all possible permutations for rows and columns
+    rows = []
+    for row in range(list_len):
+        left, right = clues[list_len*4-row-1], clues[list_len+row]
+        rows.append([permutations[i] for i in range(len(permutations)) if (left == 0 or cl[i] == left) and (right == 0 or cr[i] == right)])
+
+    cols = []
+    for col in range(list_len):
+        left, right = clues[col], clues[list_len*3-col-1]
+        cols.append([permutations[i] for i in range(len(permutations)) if (left == 0 or cl[i] == left) and (right == 0 or cr[i] == right)])
     
-    for row, candidates in enumerate(rowCandidatesList):
-        for heights in candidates:
-            for col, height in enumerate(heights):
-                rowBits[row][col] |= 1 << height-1
     
-    for col, candidates in enumerate(colCandidatesList):
-        for heights in candidates:
-            for row, height in enumerate(heights):
-                colBits[row][col] |= 1 << height-1
-    
-    for idx, row in enumerate(mask):
-        for col, _ in enumerate(row):
-            mask[idx][col] = maskAll & ~(rowBits[idx][col] & colBits[idx][col])
+    # As long as the puzzle is not completely solved
+    while [len(row) for row in rows].count(1) < list_len:
+        state = [len(row) for row in rows] + [len(col) for col in cols]
 
-def cloneState(state):
-        return {
-            'mask': state['mask'],
-            'tops': state['tops'],
-            'maxs': state['maxs']
-        }
+        try_solve(rows, cols, puzzle, list_len)
 
-
-def getCandidatesForRow(row, clues, permutations, seenMap, list_len):
-    left = getLeftClue(clues, row, len(clues))
-    right = getRightClue(clues, row, list_len)
-
-    if left and right:
-        candidates = seenMap.get('total')[left][right]
-    elif left:
-        candidates = seenMap.get('left')[left]
-    elif right:
-        candidates = seenMap.get('right')[right]
-    else:
-        candidates = permutations
-    return candidates
-
-def getCandidatesForCol(col, clues, permutations, seenMap, list_len):
-    top = getTopClue(clues, col)
-    bottom = getBotClue(clues, col, list_len)
-    if top and bottom:
-        candidates = seenMap.get('total')[top][bottom]
-    elif top:
-        candidates = seenMap.get('left')[top]
-    elif bottom:
-        candidates = seenMap.get('right')[bottom]
-    else:
-        candidates = permutations
-    return candidates
-
-def dividedIntoGroups(permutations):
-    # {Number of Skyscraper possible to see : configurations possible for each number}
-    left_map = {}
-    right_map = {}
-    # {Number of Skyscraper in the left: {Number of Skyscraper in the right : configurations}}
-    total_map = {}
-    for group in permutations:
-        left = howManyElementsICanSee(group)
-        if not left_map.get(left):
-            left_map[left] = []
-        left_map[left] += [group]
-
-        right = howManyElementsICanSee(group[::-1])
-        if not right_map.get(right):
-            right_map[right] = []
-        right_map[right] += [group]
-
-        if not total_map.get(left):
-            total_map[left] = {}
-        if not total_map.get(left).get(right):
-            total_map[left][right] = []
-        total_map[left][right] += [group]
-    
-    return {'left' : left_map, 'right' : right_map, 'total' : total_map}
-
-def fillGrid(grid, clues, n):
-    # If it assumes a value X, it means that X can not be the answear
-    # in the given position. 1 <= X <= n
-    mask = [[0 for i in range(n)] for j in range(n)]
-    
-    length = len(clues)
-    # Check by Row
-    for i in range(n):
-        left = getLeftClue(clues, i, length)
-        right = getRightClue(clues, i, n)
-        for j in range(n):
-            if (left == 1 and not j) or (right == 1 and j == n-1):
-                maskTheSameLine(mask, i, j, n)
-                continue
-
-            for k in range(1, n+1):
-                behind = n - k + 1
-                if (j + behind < left) or (n - 1 - j + behind < right):
-                    mask[i][j] |= 1 << k - 1
-                
-    # Check by Column 
-    for j in range(n):
-        top = getTopClue(clues, j)
-        bot = getBotClue(clues, j, n)
-        for i in range(n):
-            if (top == 1 and not i) or (bot == 1 and i == n - 1):
-                maskTheSameLine(mask, i, j, n)
-                continue
+        if [len(row) for row in rows].count(1) < list_len and [len(row) for row in rows] + [len(col) for col in cols] == state:
             
-            for k in range(1, n+1):
-                behind = n - k + 1
-                if (i + behind < top) or (n - 1 - i + behind < bot):
-                    mask[i][j] |= 1 << k - 1
+            heights_sort = sorted([(len(height), 0, i) for i, height in enumerate(rows)] + [(len(height), 1, i) for i, height in enumerate(cols)])
 
-    pruneGridAndMask(grid, mask, n)
-    
-    return mask
+            modified = False
 
+            for height in heights_sort:
 
-def pruneGridAndMask(grid, mask, n):
-    while True:
-        if findUniqueBit(grid, mask, n): continue
-        if findUniqueCol(grid, mask, n): continue
-        if findUniqueRow(grid, mask, n): continue
-        break
+                # the correct one
+                if height[0] == 1:
+                    continue
 
-def maskTheSameLine(mask, i, j, x):
-    len_mask = len(mask)
-    maskAll = 2**len_mask - 1
-    for k in range(len_mask):
-        if k != j:
-            mask[i][k] |= 1 << x - 1
-        if k != i:
-            mask[k][j] |= 1 << x - 1
-    mask[i][j] = ~(1 << x-1) & maskAll
+                index = height[2]
 
-def findUniqueIndex(n, fn):
-    indexes = []
-    for i in range(n):
-        if (fn(i)):
-            indexes.append(i)
-    return indexes[0] if len(indexes) == 1 else -1
+                for i in range(height[0]):
 
+                    # copy the current state
+                    c_rows = [h.copy() for h in rows]
+                    c_cols = [h.copy() for h in cols]
+                    c_puzzle = [r.copy() for r in puzzle]
 
-def findUniqueBit(grid, mask, n):
-    for i in range(n):
-        for j in range(n):
-            if grid[i][j]: 
-                continue
-            k = findUniqueIndex(n , lambda bit : not(mask[i][j] & (1 << bit)))
-            if k >= 0:
-                grid[i][j] = k + 1
-                maskTheSameLine(mask, i, j, k+1)
-                return True
-    return False
-
-def findUniqueCol(grid, mask, n):
-    for i in range(n):
-        for k in range(n):
-            j = findUniqueIndex(n, lambda col: not(grid[i][col]) and not(mask[i][col] & (1 << k)))
-
-            if j >= 0:
-                grid[i][j] = k + 1
-                maskTheSameLine(mask, i, j, k+1)
-                return True
-    return False
-
-def findUniqueRow(grid, mask, n):
-    for j in range(n):
-        for k in range(n):
-            i = findUniqueIndex(n, lambda row: not(grid[row][j]) and not(mask[row][j] & (1 <<k)))
-            if i >= 0:
-                grid[i][j] = k + 1
-                maskTheSameLine(mask, i, j, k+1)
-                return True
-    return False
+                    # remove every hypothesis except the selected one
+                    if height[1] == 0:
+                        c_rows[index] = [rows[index][i]]
+                    else:
+                        c_cols[index] = [cols[index][i]]
+                    
+                    # if this hypothesis is not valid.
+                    # remove it from the original state
+                    if not try_solve(c_rows, c_cols, c_puzzle, list_len):
+                        if height[1] == 0:
+                            rows[index].pop(i)
+                        else:
+                            cols[index].pop(i)
+                        
+                        modified = True
+                        break
+                if modified:
+                    break
+            # could not solve
+            if not modified:    
+                break
+    return puzzle
+            
+                        
 
 
-def getLeftClue(clues, row, length):
-    return clues[length - 1 - row]
 
-def getRightClue(clues, row, length):
-    return clues[length + row]
+def count_steps(values, list_len):
+    max_step, steps = 0, 0
+    for value in values:
+        if value >= max_step:
+            steps += 1
+            max_step = value
+        if value >= list_len-1:
+            break
+    return steps
 
-def getTopClue(clues, column):
-    return clues[column]
+def try_solve(rows, cols, puzzle, list_len):
+    changed = True
 
-def getBotClue(clues, column, length):
-    return clues[(length*3) - 1 - column]
+    while changed:
+        changed = False
 
-# given an array, how many elements I can see
-# if a bigger number hides the smaller one
-# after him
-def howManyElementsICanSee(group):
-    cur_element = group[0]
-    count = 1
-    for element in group:
-        if element > cur_element:
-            cur_element = element
-            count += 1
-    return count
+        for row in range(list_len):
+            for col in range(list_len):
 
-def findIndexForRow(row, indexes, clues, permutations, rowCandidatesList, state):
-    pass
+                # For each entry
+                #   if a number i can be placed according to a hypothesis in cols / rows
+                #     return True
+                count_cols = [len(hypothesis(cols[col], row, i)) > 0 for i in range(list_len)]
+                count_rows = [len(hypothesis(rows[row], col, i)) > 0 for i in range(list_len)]
 
+                # no number can be placed. There isn't a possible solution
+                if count_rows.count(True) == 0 or count_cols.count(True) == 0:
+                    return False
+                
+                if count_rows.count(True) == 1 or puzzle[row][col] == 0:
+                    puzzle[row][col] = count_rows.index(True) + 1
+                elif count_cols.count(True) == 1 or puzzle[row][col] == 0:
+                    puzzle[row][col] = count_cols.index(True) + 1
+                
+                # update rows / cols
+                # remove entries that are not possible anymore
+                for i in range(list_len):
+                    if count_cols[i] == count_rows[i]:
+                        continue
 
-solvePuzzle([7,0,0,0,2,2,3, 0,0,3,0,0,0,0, 3,0,3,0,0,5,0, 0,0,0,0,5,0,4])
+                    # no hypothesis uses i in a row = remove col from cols
+                    if count_cols[i]:
+                        cols[col] = [r for r in cols[col] if r[row] != i]
+                    
+                    # no hypothesis uses
+                    if count_rows[i]:
+                        rows[row] = [c for c in rows[row] if c[col] != i]
+                    
+                    changed = True
+    return True    
+
+def hypothesis(hypothesis, x, height):
+    return[heights[x] for heights in hypothesis if heights[x] == height]
+
+print(solve_puzzle([7,0,0,0,2,2,3, 0,0,3,0,0,0,0, 3,0,3,0,0,5,0, 0,0,0,0,5,0,4]))
