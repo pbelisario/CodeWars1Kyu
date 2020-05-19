@@ -4,6 +4,14 @@ This is the SUPER performance version of [This kata](https://www.codewars.com/ka
 
 You task is exactly the same as that kata. But this time, you should output result % 998244353, or otherwise the result would be too large.
 
+### Data Range
+    sometimes
+    n <= 80000
+    m <= 100000
+    while sometimes
+    n <= 3000
+    m <= 2^200
+
 
 ### The previous Kata Task
 
